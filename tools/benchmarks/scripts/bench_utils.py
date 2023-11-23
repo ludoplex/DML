@@ -48,29 +48,22 @@ def get_hostname():
     return host
 
 def find_alias(name, list):
-    for alias in list:
-        if name in alias:
-            return True
-    return False
+    return any(name in alias for alias in list)
     
 def find_pattern(string, pattern, required, empty = "n/a"):
-    match = re.match(pattern, string)
-    if not match:
-        if required:
-            return "Error"
-        else:
-            return empty
-    return match[1]
+    if match := re.match(pattern, string):
+        return match[1]
+    else:
+        return "Error" if required else empty
     
 def find_param(string, param, required=False, set=False, last=False, delim=":"):
-    if set:
-        result = ""
-        value = find_pattern(string, ".*/" + param + delim + "(.+?)/", required, empty="")
-        if len(value):
-            result = param + ":" + value
-            if not last:
-                result += "/"
-        return result
-    else:
-        return find_pattern(string, ".*/" + param + delim + "(.+?)/", required)
+    if not set:
+        return find_pattern(string, f".*/{param}{delim}(.+?)/", required)
+    result = ""
+    value = find_pattern(string, f".*/{param}{delim}(.+?)/", required, empty="")
+    if len(value):
+        result = f"{param}:{value}"
+        if not last:
+            result += "/"
+    return result
 

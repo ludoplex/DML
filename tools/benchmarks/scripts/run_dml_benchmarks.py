@@ -42,118 +42,111 @@ FIELDS = {**FIELDS_BASE,
           LATENCY     : ''}
 
 def get_filter(op, path, api, latency, size, batch, depth, threads):
-    filter = ""
-    if latency:
-        filter += "^Latency"
-    else:
-        filter += "^Throughput"
-
+    filter = "" + ("^Latency" if latency else "^Throughput")
     if batch == 1:
         filter += ".*<Batch"
 
-    filter += ".*" + api
-    if path == "hw":
+    filter += f".*{api}"
+    if path == "auto":
+        filter += ".*Auto"
+
+    elif path == "hw":
         filter += ".*Hardware"
     elif path == "sw":
         filter += ".*Software"
-    elif path == "auto":
-        filter += ".*Auto"
-        
     if size:
-        filter += ".*size:" + str(size) + "/"
+        filter += f".*size:{str(size)}/"
     if batch == 0:
         filter += ".*batch:1/"
     elif batch > 1:
-        filter += ".*batch:" + str(batch) + "/"
+        filter += f".*batch:{str(batch)}/"
     if depth:
-        filter += ".*depth:" + str(depth) + "/"
+        filter += f".*depth:{str(depth)}/"
     if threads:
-        filter += ".*threads:" + str(threads) + "$"
-        
+        filter += f".*threads:{str(threads)}$"
+
     return filter
 
 def run_generic(cmd, args, test):
     cmd = ["nice", "-n", "-20", "numactl", "--cpunodebind=0", "--membind=0", cmd] + args + ['--benchmark_out_format=csv', '--benchmark_counters_tabular=true', '--benchmark_min_time=0.3' if not test else '--benchmark_min_time=0']
     for arg in cmd:
-        print(arg + " ", end='')
+        print(f"{arg} ", end='')
     print("")
     p = subprocess.run(cmd, universal_newlines=True)
     if p.returncode:
-        print(cmd[0] + " - error")
+        print(f"{cmd[0]} - error")
 
 def run_dml(bin_path, results_path, filter):
-    case_filter = "--benchmark_filter=" + filter
-    run_generic(cmd=bin_path, args=['--benchmark_out=' + results_path, case_filter])
+    case_filter = f"--benchmark_filter={filter}"
+    run_generic(
+        cmd=bin_path, args=[f'--benchmark_out={results_path}', case_filter]
+    )
 
 def process_results(raw_res_path, res_path, config_str):
-    result_file = open(res_path, "a")
-    result = csv.DictWriter(result_file, fieldnames=FIELDS.keys(), delimiter=';')
-    if result_file.tell() == 0:
-        result.writeheader()
+    with open(res_path, "a") as result_file:
+        result = csv.DictWriter(result_file, fieldnames=FIELDS.keys(), delimiter=';')
+        if result_file.tell() == 0:
+            result.writeheader()
 
-    print("Processing report " + raw_res_path)
-    raw_result_file = open(raw_res_path, "r")
-    pos  = 0
-    line = raw_result_file.readline()
-    while line:
-        if "name," in line:
-            raw_result_file.seek(pos)
-            break
-        pos = raw_result_file.tell()
-        line = raw_result_file.readline()
-    raw_report = list(csv.DictReader(raw_result_file))
-    raw_result_file.close()
-    for line in raw_report:
-        FIELDS.fromkeys(FIELDS, "")
-        FIELDS[CONFIG]      = config_str
-        FIELDS[OPERATION]   = find_pattern(line["name"], "^(.+?)/",             required=True)
-        FIELDS[THREADS]     = find_pattern(line["name"], ".*/threads:(.+?)$",   required=False, empty=1)
-        
-        FIELDS[TIMING]      = find_param(line["name"], "timer",     required=True)
-        FIELDS[SRC_MEM]     = find_param(line["name"], "in_mem",    required=True)
-        FIELDS[DST_MEM]     = find_param(line["name"], "out_mem",   required=True)
-        FIELDS[API]         = find_param(line["name"], "api",       required=True)
-        FIELDS[PATH]        = find_param(line["name"], "path",      required=True)
-        FIELDS[EXEC]        = find_param(line["name"], "exec",      required=True)
-        FIELDS[QDEPTH]      = find_param(line["name"], "qsize",     required=True)
-        FIELDS[BATCH_SIZE]  = find_param(line["name"], "batch")
-        FIELDS[DATA]        = find_param(line["name"], "data")
-        FIELDS[SIZE]        = find_param(line["name"], "size")
-        FIELDS[BLOCK_SIZE]  = find_param(line["name"], "data:.+?/", delim="")
-        FIELDS[BLOCK]       = find_param(line["name"], "block")
-        FIELDS[COMP_PARAMS] = find_param(line["name"], "gen_path",  set=True) +\
-                              find_param(line["name"], "huffman",   set=True) +\
-                              find_param(line["name"], "stat_int",  set=True) +\
-                              find_param(line["name"], "dict",      set=True) +\
-                              find_param(line["name"], "lvl",       set=True, last=True)
-        FIELDS[FILT_PARAMS] = "n/a"
+        print(f"Processing report {raw_res_path}")
+        with open(raw_res_path, "r") as raw_result_file:
+            pos  = 0
+            while line := raw_result_file.readline():
+                if "name," in line:
+                    raw_result_file.seek(pos)
+                    break
+                pos = raw_result_file.tell()
+            raw_report = list(csv.DictReader(raw_result_file))
+        for line in raw_report:
+            FIELDS.fromkeys(FIELDS, "")
+            FIELDS[CONFIG]      = config_str
+            FIELDS[OPERATION]   = find_pattern(line["name"], "^(.+?)/",             required=True)
+            FIELDS[THREADS]     = find_pattern(line["name"], ".*/threads:(.+?)$",   required=False, empty=1)
 
-        FIELDS[API] = "qpl_" + FIELDS[API]
+            FIELDS[TIMING]      = find_param(line["name"], "timer",     required=True)
+            FIELDS[SRC_MEM]     = find_param(line["name"], "in_mem",    required=True)
+            FIELDS[DST_MEM]     = find_param(line["name"], "out_mem",   required=True)
+            FIELDS[API]         = find_param(line["name"], "api",       required=True)
+            FIELDS[PATH]        = find_param(line["name"], "path",      required=True)
+            FIELDS[EXEC]        = find_param(line["name"], "exec",      required=True)
+            FIELDS[QDEPTH]      = find_param(line["name"], "qsize",     required=True)
+            FIELDS[BATCH_SIZE]  = find_param(line["name"], "batch")
+            FIELDS[DATA]        = find_param(line["name"], "data")
+            FIELDS[SIZE]        = find_param(line["name"], "size")
+            FIELDS[BLOCK_SIZE]  = find_param(line["name"], "data:.+?/", delim="")
+            FIELDS[BLOCK]       = find_param(line["name"], "block")
+            FIELDS[COMP_PARAMS] = find_param(line["name"], "gen_path",  set=True) +\
+                                  find_param(line["name"], "huffman",   set=True) +\
+                                  find_param(line["name"], "stat_int",  set=True) +\
+                                  find_param(line["name"], "dict",      set=True) +\
+                                  find_param(line["name"], "lvl",       set=True, last=True)
+            FIELDS[FILT_PARAMS] = "n/a"
 
-        try:
-            if line["Throughput"] == "" or line["Latency/Op"] == "" or line["Ratio"] == "":
-                raise
-            FIELDS[RATIO]       = float(line["Ratio"])
-            FIELDS[THROUGHPUT]  = float(line["Throughput"])/1000000000 # GB/s
-            FIELDS[LATENCY]     = float(line["Latency/Op"])*1000000000 # ns
-        except:
-            FIELDS[RATIO]       = "ERROR"
-            FIELDS[THROUGHPUT]  = "ERROR"
-            FIELDS[LATENCY]     = "ERROR"
+            FIELDS[API] = f"qpl_{FIELDS[API]}"
 
-        result.writerow(FIELDS)
+            try:
+                if line["Throughput"] == "" or line["Latency/Op"] == "" or line["Ratio"] == "":
+                    raise
+                FIELDS[RATIO]       = float(line["Ratio"])
+                FIELDS[THROUGHPUT]  = float(line["Throughput"])/1000000000 # GB/s
+                FIELDS[LATENCY]     = float(line["Latency/Op"])*1000000000 # ns
+            except:
+                FIELDS[RATIO]       = "ERROR"
+                FIELDS[THROUGHPUT]  = "ERROR"
+                FIELDS[LATENCY]     = "ERROR"
 
-    result_file.close()
+            result.writerow(FIELDS)
+
     os.remove(raw_res_path)
 
 def run_case(args, config_str, res_postfix, res_path):
     if args.filter:
-        raw_res_path = args.res_path + "dml_raw_" + config_str + res_postfix + ".csv"
+        raw_res_path = f"{args.res_path}dml_raw_{config_str}{res_postfix}.csv"
         run_dml(args.bin_path, raw_res_path, filter=args.filter)
         process_results(raw_res_path, res_path, config)
     else:
         for op in OP_CODES:
-            if not args.case in op:
+            if args.case not in op:
                 continue
 
             for api in APIS:
@@ -174,23 +167,14 @@ def run_case(args, config_str, res_postfix, res_path):
                             if args.batch >= 1 and batch == 0:
                                 continue
                         if batch:
-                            if args.batch < 0:
-                                batch_arg = 1
-                            else:
-                                batch_arg = args.batch
+                            batch_arg = 1 if args.batch < 0 else args.batch
                         else:
                             batch_arg = 0
-                            
-                        res_prefix = op + "_" + api + "_"
-                        if latency:
-                            res_prefix += "latency_"
-                        else:
-                            res_prefix += "throughput_"
-                        if batch:
-                            res_prefix += "b_"
-                        else:
-                            res_prefix += "nb_"
-                        raw_res_path = args.res_path + "dml_raw_" + res_prefix + config_str + res_postfix + ".csv"
+
+                        res_prefix = f"{op}_{api}_"
+                        res_prefix += "latency_" if latency else "throughput_"
+                        res_prefix += "b_" if batch else "nb_"
+                        raw_res_path = f"{args.res_path}dml_raw_{res_prefix}{config_str}{res_postfix}.csv"
 
                         print("")
                         run_dml(args.bin_path, raw_res_path, filter=get_filter(op, args.path, api, latency, args.size, batch_arg, args.depth, args.threads))
@@ -199,7 +183,7 @@ def run_case(args, config_str, res_postfix, res_path):
 def run_bench(args):
     config = {NUMAS:0, DEVICES:0, WQS:0, ENGINES:0}
     config[NUMAS], config[DEVICES], config[WQS], config[ENGINES] = accel_conf.get_aggregated(dev_filter="dsa")
-    config_str = str(config[NUMAS]) + "n" + str(config[DEVICES]) + "d" + str(config[ENGINES]) + "e" + str(config[WQS]) + "w"
+    config_str = f"{str(config[NUMAS])}n{str(config[DEVICES])}d{str(config[ENGINES])}e{str(config[WQS])}w"
 
     if args.clean and os.path.exists(args.res_path):
         shutil.rmtree(args.res_path)
@@ -208,48 +192,43 @@ def run_bench(args):
     for rep in range(1, args.repetitions+1):
         res_postfix = ""
         if args.repetitions > 1:
-            res_postfix = "_run_" + str(rep)
-        print("Run " + str(rep))
-        res_path = args.res_path + "dml_" + config_str + res_postfix + ".csv"
+            res_postfix = f"_run_{str(rep)}"
+        print(f"Run {str(rep)}")
+        res_path = f"{args.res_path}dml_{config_str}{res_postfix}.csv"
         print("Results path: ", res_path)
 
         if not os.path.exists(args.res_path):
             os.makedirs(args.res_path)
-        else:
-            if os.path.exists(res_path):
-                os.remove(res_path)
-    
+        elif os.path.exists(res_path):
+            os.remove(res_path)
+
         run_case(args, config_str, res_postfix, res_path)
 
         if args.repetitions > 1:
-            result_file = open(res_path, "r")
-            readers.append(list(csv.DictReader(result_file, delimiter=';')));
-            result_file.close()
-
+            with open(res_path, "r") as result_file:
+                readers.append(list(csv.DictReader(result_file, delimiter=';')));
     if args.repetitions > 1:
-        res_path = args.res_path + "dml_" + config_str + ".csv"
-        result_file = open(res_path, "w+")
-        result = csv.DictWriter(result_file, fieldnames=FIELDS.keys(), delimiter=';')
-        result.writeheader()
+        res_path = f"{args.res_path}dml_{config_str}.csv"
+        with open(res_path, "w+") as result_file:
+            result = csv.DictWriter(result_file, fieldnames=FIELDS.keys(), delimiter=';')
+            result.writeheader()
 
-        for row in range(len(readers[0])):
-            min = dict(readers[0][row])
-            for reader in range(1, args.repetitions):
-                second = readers[reader][row]
-                try:
-                    if float(min[LATENCY]) > float(second[LATENCY]):
-                        min[LATENCY]    = second[LATENCY]
-                        min[THROUGHPUT] = second[THROUGHPUT]
-                except:
-                    if not isinstance(min[LATENCY], float):
-                        min[LATENCY]    = second[LATENCY]
-                        min[THROUGHPUT] = second[THROUGHPUT]
-                    if isinstance(min[LATENCY], float) or isinstance(second[LATENCY], float):
-                        print("Warning: unexpected error in run " + reader)
-                        print(second)
-            result.writerow(min)
-        result_file.close()
-        
+            for row in range(len(readers[0])):
+                min = dict(readers[0][row])
+                for reader in range(1, args.repetitions):
+                    second = readers[reader][row]
+                    try:
+                        if float(min[LATENCY]) > float(second[LATENCY]):
+                            min[LATENCY]    = second[LATENCY]
+                            min[THROUGHPUT] = second[THROUGHPUT]
+                    except:
+                        if not isinstance(min[LATENCY], float):
+                            min[LATENCY]    = second[LATENCY]
+                            min[THROUGHPUT] = second[THROUGHPUT]
+                        if isinstance(min[LATENCY], float) or isinstance(second[LATENCY], float):
+                            print(f"Warning: unexpected error in run {reader}")
+                            print(second)
+                result.writerow(min)
     return res_path
 
 if __name__ == "__main__":

@@ -48,44 +48,43 @@ def hrSize(size):
         size /= 1024
 
 def getMachineInfo(path):
-    info_file = open(path + "/machine_info.csv", "w+")
-    
-    print("System info:")
-    try:
-        print("  BIOS: ", end='')
-        version = subprocess.check_output(["dmidecode", "--string", "bios-version"], universal_newlines=True).split("\n")[0]
-        date    = subprocess.check_output(["dmidecode", "--string", "bios-release-date"], universal_newlines=True).split("\n")[0]
-        print("")
-        print("    Version: " + version)
-        print("    Date:    " + date)
-    except:
-        print("cannot get BIOS info")
+    with open(f"{path}/machine_info.csv", "w+") as info_file:
+        print("System info:")
+        try:
+            print("  BIOS: ", end='')
+            version = subprocess.check_output(["dmidecode", "--string", "bios-version"], universal_newlines=True).split("\n")[0]
+            date    = subprocess.check_output(["dmidecode", "--string", "bios-release-date"], universal_newlines=True).split("\n")[0]
+            print("")
+            print(f"    Version: {version}")
+            print(f"    Date:    {date}")
+        except:
+            print("cannot get BIOS info")
 
-    print("  Host:")
-    uname = platform.uname()
-    print("    Name: " + uname.node)
-    print("    OS:   " + uname.system + ", " + uname.release)
+        print("  Host:")
+        uname = platform.uname()
+        print(f"    Name: {uname.node}")
+        print(f"    OS:   {uname.system}, {uname.release}")
 
-    if has_psutil:
-        print("  CPU:")
-        print("    Cores:     " + str(psutil.cpu_count(logical=False)) + ", " + str(psutil.cpu_count(logical=True)))
-        freq = psutil.cpu_freq()
-        print("    Frequency: " + str(freq.min) + "-" + str(freq.max) + ", " + str(freq.current))
-        print("    Cache:     n/a")
-    else:
-        print("  CPU: required psutil module")
-    
-    if has_psutil:
-        print("  Memory:")
-        mem = psutil.virtual_memory()
-        print("    Total:     " + hrSize(mem.total))
-        print("    Avaliable: " + hrSize(mem.available))
-        #subprocess.check_output("dmidecode -t memory | grep Locator: | grep CPU0", universal_newlines=True, shell=True)
-        print("    Channels:  n/a")
-    else:
-        print("  Memory: required psutil module")
-   
-    info_file.close()
+        if has_psutil:
+            print("  CPU:")
+            print(
+                f"    Cores:     {str(psutil.cpu_count(logical=False))}, {str(psutil.cpu_count(logical=True))}"
+            )
+            freq = psutil.cpu_freq()
+            print(f"    Frequency: {str(freq.min)}-{str(freq.max)}, {str(freq.current)}")
+            print("    Cache:     n/a")
+        else:
+            print("  CPU: required psutil module")
+
+        if has_psutil:
+            print("  Memory:")
+            mem = psutil.virtual_memory()
+            print(f"    Total:     {hrSize(mem.total)}")
+            print(f"    Avaliable: {hrSize(mem.available)}")
+            #subprocess.check_output("dmidecode -t memory | grep Locator: | grep CPU0", universal_newlines=True, shell=True)
+            print("    Channels:  n/a")
+        else:
+            print("  Memory: required psutil module")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Multiconf benchmark runnner')
